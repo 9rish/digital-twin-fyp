@@ -1,4 +1,4 @@
-# Digital Twin Engine (Member A's slice)
+# Digital Twin Engine 
 
 This is the SimPy-based digital twin for the Agentic AI Supply Chain
 Exception Management project — Section 8, Member A's responsibilities:
