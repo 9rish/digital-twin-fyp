@@ -69,14 +69,25 @@ def _temporarily_as(name: str, module):
 # our own schemas.py.
 twin_schemas = _load_from_path("twin_schemas", "schemas.py")
 
-# twin.py and data_loader.py both do `from schemas import ...` internally --
-# while THEY load, sys.modules['schemas'] must resolve to twin_schemas, or
-# their classes get built against the wrong shape entirely.
+# twin.py, data_loader.py, and disruption_injector.py all do
+# `from schemas import ...` internally -- while THEY load, sys.modules['schemas']
+# must resolve to twin_schemas, or their classes get built against the wrong
+# shape entirely. disruption_injector.py additionally does `from twin import
+# DigitalTwin` (a bare import), so 'twin' needs the same temporary override.
 with _temporarily_as("schemas", twin_schemas):
     twin_engine = _load_from_path("twin_engine", "twin.py")
     twin_data_loader = _load_from_path("twin_data_loader", "data_loader.py")
+    with _temporarily_as("twin", twin_engine):
+        twin_disruption_injector = _load_from_path("twin_disruption_injector", "disruption_injector.py")
 
 DigitalTwin = twin_engine.DigitalTwin
+
+# Re-exported so callers (demo.py, tests) don't need to know these live in
+# the twin project's own disruption_injector.py under the hood.
+inject_shipment_delay = twin_disruption_injector.inject_shipment_delay
+inject_demand_spike = twin_disruption_injector.inject_demand_spike
+inject_stock_imbalance = twin_disruption_injector.inject_stock_imbalance
+random_disruption = twin_disruption_injector.random_disruption
 
 # Only AFTER the twin's own modules have finished loading do we import OUR
 # schemas under the bare name `schemas` — order matters here.

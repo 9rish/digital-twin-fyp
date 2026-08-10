@@ -32,6 +32,13 @@ def main() -> None:
     # use_real_data=True will use digital-twin-fyp-main/data/DataCoSupplyChainDataset.csv
     # if present, and fall back to the twin's own synthetic generator otherwise.
     twin = twin_adapter.build_live_twin(use_real_data=True, rng_seed=42)
+
+    # Inject a real disruption so the demo actually exercises the full
+    # pipeline (multiple candidates -> a real decision), instead of just
+    # reporting whatever ambient state the baseline twin happens to be in.
+    injected = twin_adapter.inject_shipment_delay(twin, "SHP-482", severity="medium")
+    print(f"\n=== Injected disruption: {injected.description} ===")
+
     graph = build_graph(twin)
     config = {"configurable": {"thread_id": "demo-run-1"}}
 

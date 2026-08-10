@@ -56,7 +56,7 @@ from llm_client import call_llm
 
 _ID_NAMESPACE = uuid.UUID("6f6f6f66-6f66-6f66-6f66-6f6f6f6f6f6f")
 
-ObjectivePriority = Literal["cost", "delay", "service_level"]
+ObjectivePriority = Literal["cost", "profit", "delay", "service_level"]
 
 
 @dataclass
@@ -79,7 +79,7 @@ class DecisionConfig:
     severity_risk_ceiling: dict[Severity, float] = field(
         default_factory=lambda: {"critical": 0.15, "high": 0.30, "medium": 0.50, "low": 0.70}
     )
-    objective_priority: ObjectivePriority = "cost"
+    objective_priority: ObjectivePriority = "profit"
     business_rules: BusinessRules = field(default_factory=BusinessRules)
     risk_level_thresholds: dict[str, float] = field(
         default_factory=lambda: {"low": 0.15, "medium": 0.40}  # >= medium threshold => "high"
@@ -117,11 +117,21 @@ def _rule_violations(candidate: CandidateOutcome, rules: BusinessRules) -> list[
 
 def _objective_value(candidate: CandidateOutcome, priority: ObjectivePriority) -> float:
     """Lower is always better in this function's output, regardless of
-    priority, so a single sort direction works for every objective."""
+    priority, so a single sort direction works for every objective.
+
+    NOTE: "cost" (cost_delta) only counts direct operational spend (rush
+    fees, holding costs) -- it does NOT include revenue lost to a worse
+    service level. "profit" (profit_impact = -cost_delta - lost_sales_effect)
+    is the fuller picture and should usually be preferred as the default;
+    optimizing on "cost" alone can pick an action that's cheaper to execute
+    but net-worse for the business once lost sales are counted.
+    """
     if priority == "delay":
         return candidate.delivery_delay_days
     if priority == "service_level":
         return -candidate.service_level_impact  # maximize service level = minimize its negation
+    if priority == "profit":
+        return -candidate.profit_impact  # maximize profit_impact = minimize its negation
     return candidate.cost_delta  # default: "cost"
 
 
@@ -217,6 +227,7 @@ def _fallback_justification(
     constraint_satisfied: bool,
     business_rules_satisfied: bool,
     risk_level: str,
+    objective_priority: ObjectivePriority = "cost",
 ) -> str:
     chosen = ranking[0]
     others = ranking[1:]
@@ -228,10 +239,19 @@ def _fallback_justification(
     else:
         lead = ""
 
+    # Savings must be expressed in whichever metric actually drove the
+    # ranking -- cost_delta and profit_impact routinely disagree (a cheaper
+    # cost_delta can still be the worse profit_impact once lost sales are
+    # counted), so hardcoding one here would contradict the chosen action.
     if others:
-        next_best_cost = min(c.cost_delta for c in others)
-        savings = round(next_best_cost - chosen.cost_delta, 2)
-        savings_clause = f"Saves ~₹{max(savings, 0):,.0f} vs. next-best alternative, "
+        if objective_priority == "profit":
+            next_best = max(c.profit_impact for c in others)  # higher profit_impact = better
+            savings = round(chosen.profit_impact - next_best, 2)
+            savings_clause = f"Saves ~₹{max(savings, 0):,.0f} in profit impact vs. next-best alternative, "
+        else:
+            next_best_cost = min(c.cost_delta for c in others)
+            savings = round(next_best_cost - chosen.cost_delta, 2)
+            savings_clause = f"Saves ~₹{max(savings, 0):,.0f} vs. next-best alternative, "
     else:
         savings_clause = "Only compliant candidate available, "
 
@@ -291,7 +311,9 @@ def run(
     chosen = ranking[0]
     risk_level = _risk_level(chosen.stockout_risk, config)
     confidence = _confidence(ranking, config.objective_priority, constraint_satisfied, business_rules_satisfied)
-    fallback = _fallback_justification(ranking, constraint_satisfied, business_rules_satisfied, risk_level)
+    fallback = _fallback_justification(
+        ranking, constraint_satisfied, business_rules_satisfied, risk_level, config.objective_priority
+    )
 
     candidate_summary = "\n".join(
         f"- {c.action}: cost ₹{c.cost_delta:,.0f}, delay {c.delivery_delay_days}d, "

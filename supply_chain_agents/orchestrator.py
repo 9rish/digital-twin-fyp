@@ -96,8 +96,20 @@ def _resilient_call(fn, args: tuple, node_name: str, config: OrchestratorConfig 
             pool.shutdown(wait=False)
             return result
         except FutureTimeoutError:
+            # Python threads can't be forcibly cancelled -- shutdown(wait=False)
+            # does NOT stop fn from still running in the background. Retrying
+            # here would start a second concurrent call to fn while the first
+            # is still alive; for nodes with shared/mutable state (e.g.
+            # monitoring_agent's alert dedup) that lets the abandoned attempt
+            # silently corrupt what the retry sees, producing a wrong-but-
+            # successful result instead of a visible failure. So: no retry on
+            # timeout, fail loudly instead.
             pool.shutdown(wait=False)
-            last_exc = TimeoutError(f"{node_name} timed out after {config.node_timeout_seconds}s (attempt {attempt + 1})")
+            raise RuntimeError(
+                f"{node_name} timed out after {config.node_timeout_seconds}s -- "
+                f"not retrying (see _resilient_call docstring: a timed-out "
+                f"attempt keeps running and can corrupt a retry's result)"
+            ) from None
         except Exception as exc:  # noqa: BLE001 - deliberately broad: this is the retry boundary
             pool.shutdown(wait=False)
             last_exc = exc

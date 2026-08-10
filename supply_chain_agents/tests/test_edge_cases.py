@@ -5,6 +5,8 @@ one of these fails loudly and points straight at the cause.
 """
 from __future__ import annotations
 
+import dataclasses
+
 from langgraph.types import Command
 
 import twin_adapter
@@ -19,7 +21,9 @@ from tests.conftest import make_twin, make_real_twin
 def test_savings_compares_against_runner_up_not_worst_alternative():
     """Old bug: savings was computed as max(others) - chosen, i.e. vs. the
     MOST expensive alternative, mislabeled as 'next-best'. Must be vs. the
-    cheapest of the others (the true runner-up)."""
+    cheapest of the others (the true runner-up). Pinned to objective_priority
+    "cost" explicitly -- this test predates "profit" existing as an option,
+    and DEFAULT_CONFIG no longer defaults to "cost"."""
     candidates = [
         CandidateOutcome(action="best", action_type="reroute", cost_delta=20000,
                           delivery_delay_days=1, stockout_risk=0.1, service_level_impact=0.9),
@@ -30,11 +34,37 @@ def test_savings_compares_against_runner_up_not_worst_alternative():
     ]
     event = DisruptionEvent(event_id="EVT-x", type="shipment_delay", affected_id="X",
                              severity="low", detected_at="now")
+    config = dataclasses.replace(decision_agent.DEFAULT_CONFIG, objective_priority="cost")
 
-    rec = decision_agent.run(event, candidates)
+    rec = decision_agent.run(event, candidates, config)
 
     assert rec.chosen_action == "best"
     assert "5,000" in rec.justification  # 25000 - 20000, NOT 80000 - 20000 = 60,000
+
+
+def test_profit_savings_compares_against_runner_up_not_worst_alternative():
+    """Mirror of the cost-branch test above, for the "profit" objective:
+    savings must be vs. the SECOND-BEST profit_impact among the alternatives
+    (the true runner-up), not the worst one."""
+    candidates = [
+        CandidateOutcome(action="best", action_type="reroute", cost_delta=20000,
+                          delivery_delay_days=1, stockout_risk=0.1, service_level_impact=0.9,
+                          profit_impact=-6000),
+        CandidateOutcome(action="close_runner_up", action_type="reallocate", cost_delta=25000,
+                          delivery_delay_days=1, stockout_risk=0.15, service_level_impact=0.88,
+                          profit_impact=-11000),
+        CandidateOutcome(action="way_pricier", action_type="reorder", cost_delta=80000,
+                          delivery_delay_days=0.2, stockout_risk=0.02, service_level_impact=0.98,
+                          profit_impact=-40000),
+    ]
+    event = DisruptionEvent(event_id="EVT-y", type="shipment_delay", affected_id="Y",
+                             severity="low", detected_at="now")
+    config = dataclasses.replace(decision_agent.DEFAULT_CONFIG, objective_priority="profit")
+
+    rec = decision_agent.run(event, candidates, config)
+
+    assert rec.chosen_action == "best"
+    assert "5,000" in rec.justification  # -6000 - (-11000) = 5,000, NOT -6000 - (-40000) = 34,000
 
 
 def test_exclusion_uses_identity_not_label_string():
