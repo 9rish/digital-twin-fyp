@@ -325,16 +325,42 @@ def run(
         f"risk ceiling {ceiling * 100:.0f}%" if constraint_satisfied
         else f"NOTE: no candidate met the {ceiling * 100:.0f}% risk ceiling — mention this trade-off"
     )
-    prompt = (
-        "You are a supply chain decision agent. A disruption occurred and these candidate "
-        "actions were simulated. Explain in ONE plain-language sentence why the chosen action "
-        "is the best trade-off, citing the actual numbers given. Do not invent any numbers.\n\n"
-        f"Disruption: {event.type} on {event.affected_id} (severity {event.severity}, "
-        f"objective: {config.objective_priority}, {status_note})\n"
+    
+    # --- MULTI-AGENT DEBATE ENGINE ---
+    # 1. Logistics Agent (Focuses on Stockout Risk and Service Level)
+    logistics_prompt = (
+        f"You are the Logistics Manager. A disruption occurred: {event.type} on {event.affected_id}.\n"
         f"Candidates:\n{candidate_summary}\n\n"
-        f"Chosen action: {chosen.action}"
+        f"Argue in ONE sentence for the candidate with the lowest stockout risk and best service level, regardless of cost."
     )
-    justification = call_llm(prompt, fallback=fallback)
+    logistics_arg = call_llm(logistics_prompt, fallback="I recommend prioritizing the safest option to ensure customer satisfaction.")
+
+    # 2. Finance Agent (Focuses on Cost)
+    finance_prompt = (
+        f"You are the Finance Manager. A disruption occurred: {event.type} on {event.affected_id}.\n"
+        f"Candidates:\n{candidate_summary}\n\n"
+        f"Argue in ONE sentence for the candidate with the lowest cost, regardless of stockout risk."
+    )
+    finance_arg = call_llm(finance_prompt, fallback="I recommend the cheapest option to preserve our profit margins.")
+
+    # 3. Chief Orchestrator (Synthesizes and makes final call)
+    orchestrator_prompt = (
+        f"You are the Chief Supply Chain Officer. A disruption occurred: {event.type} on {event.affected_id} "
+        f"(severity {event.severity}, objective: {config.objective_priority}, {status_note})\n"
+        f"Candidates:\n{candidate_summary}\n\n"
+        f"The system algorithm has chosen: {chosen.action}.\n\n"
+        f"Logistics Manager argues: {logistics_arg}\n"
+        f"Finance Manager argues: {finance_arg}\n\n"
+        f"Synthesize this debate and explain in ONE sentence why you agree that the algorithm's chosen action ({chosen.action}) is the best trade-off."
+    )
+    orchestrator_arg = call_llm(orchestrator_prompt, fallback=fallback)
+    
+    # Format the final justification with HTML for the frontend modal
+    justification = (
+        f"<strong>Logistics Agent:</strong> {logistics_arg}<br><br>"
+        f"<strong>Finance Agent:</strong> {finance_arg}<br><br>"
+        f"<strong>Chief Orchestrator:</strong> {orchestrator_arg}"
+    )
 
     return ActionRecommendation(
         action_id=_make_action_id(event.event_id, chosen.action),

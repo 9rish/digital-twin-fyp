@@ -18,7 +18,7 @@ import os
 import requests
 from dotenv import load_dotenv
 
-load_dotenv()  # reads .env in the working directory, if present; no-op otherwise
+load_dotenv(override=True)  # reads .env in the working directory, if present; no-op otherwise
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
@@ -29,23 +29,22 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1")
 
 
 def _call_groq(prompt: str) -> str | None:
-    if not GROQ_API_KEY:
+    env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "backend", ".env")
+    load_dotenv(env_path, override=True)
+    api_key = os.getenv("GROQ_API_KEY")
+    model = os.getenv("GROQ_MODEL", "llama3-8b-8192")
+    
+    if not api_key:
+        print(f"\033[91m[AGENT TRACE] No GROQ_API_KEY found at {env_path}\033[0m")
         return None
     try:
-        resp = requests.post(
-            GROQ_URL,
-            headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
-            json={
-                "model": GROQ_MODEL,
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 300,
-                "temperature": 0.3,
-            },
-            timeout=8,
-        )
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"].strip()
-    except Exception:
+        from langchain_groq import ChatGroq
+        chat = ChatGroq(temperature=0.3, groq_api_key=api_key, model_name=model, max_tokens=300)
+        # We can just call it synchronously since this is running inside resilient_call threadpool anyway
+        resp = chat.invoke(prompt)
+        return resp.content.strip()
+    except Exception as e:
+        print(f"\033[91m[AGENT TRACE] Groq Error: {e}\033[0m")
         return None
 
 
@@ -68,8 +67,17 @@ def call_llm(prompt: str, fallback: str) -> str:
     `fallback` should already contain the real numbers so the demo output is still
     correct even if no LLM answers — only the *phrasing* degrades, never the facts.
     """
-    for fn in (_call_groq, _call_ollama):
-        result = fn(prompt)
-        if result:
-            return result
+    print(f"\n\033[96m[AGENT TRACE] Sending prompt to LLM:\033[0m\n{prompt}\n")
+    
+    result = _call_groq(prompt)
+    if result:
+        print(f"\033[92m[AGENT TRACE] Successfully used: Groq\033[0m\n\033[93m[AGENT TRACE] Response:\033[0m\n{result}\n")
+        return result
+        
+    result = _call_ollama(prompt)
+    if result:
+        print(f"\033[92m[AGENT TRACE] Successfully used: Ollama\033[0m\n\033[93m[AGENT TRACE] Response:\033[0m\n{result}\n")
+        return result
+        
+    print(f"\033[91m[AGENT TRACE] Used: TEMPLATE FALLBACK (Groq/Ollama failed or missing keys)\033[0m\n\033[93m[AGENT TRACE] Response:\033[0m\n{fallback}\n")
     return fallback

@@ -17,6 +17,7 @@ class Warehouse(BaseModel):
     safety_stock: dict[str, int]       # SKU -> safety stock level
     avg_daily_demand: dict[str, float] = Field(default_factory=dict)     # SKU -> baseline daily demand
     recent_daily_demand: dict[str, float] = Field(default_factory=dict) # SKU -> observed demand (e.g. last 3-day avg)
+    predicted_stockout_days: dict[str, int] = Field(default_factory=dict) # SKU -> days until safety stock hit
 
 
 class Shipment(BaseModel):

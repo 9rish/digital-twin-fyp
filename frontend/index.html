@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agentic AI Digital Twin</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header class="navbar">
+        <div class="logo">
+            <h1>Supply Chain Digital Twin</h1>
+            <span class="badge">Live</span>
+        </div>
+        <div class="controls">
+            <button id="btn-inject" class="btn btn-secondary">Inject Disruption</button>
+            <button id="btn-run" class="btn btn-primary">Run Perceive Cycle</button>
+        </div>
+    </header>
+
+    <main class="dashboard">
+        <section class="panel">
+            <h2>Warehouses & Inventory</h2>
+            <div id="warehouse-grid" class="grid">
+                <!-- Dynamically populated -->
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2>Active Shipments</h2>
+            <div id="shipment-grid" class="grid">
+                <!-- Dynamically populated -->
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2>Suppliers</h2>
+            <div id="supplier-grid" class="grid">
+                <!-- Dynamically populated -->
+            </div>
+        </section>
+    </main>
+
+    <!-- Agent Command Center Modal (Hidden by default) -->
+    <div id="agent-modal" class="modal-overlay hidden">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>⚠️ Agent Recommendation</h2>
+                <span id="disruption-badge" class="severity-badge">High</span>
+            </div>
+            <div class="modal-body">
+                <p id="justification-text">Analyzing disruption...</p>
+                <div class="metrics">
+                    <div class="metric">
+                        <span class="label">Cost Impact</span>
+                        <span id="cost-impact" class="value">--</span>
+                    </div>
+                    <div class="metric">
+                        <span class="label">Delay</span>
+                        <span id="delay-impact" class="value">--</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="btn-reject" class="btn btn-danger">Reject</button>
+                <button id="btn-approve" class="btn btn-success">Approve Action</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification System -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -149,17 +149,29 @@ def to_pydantic_state(raw_state, default_planned_transit_days: int = DEFAULT_PLA
     """
     supplier_lead_times = {s.id: s.lead_time_days for s in raw_state.suppliers}
 
-    warehouses = [
-        Warehouse(
-            id=w.id,
-            location=w.location,
-            inventory=dict(w.inventory),
-            safety_stock=dict(w.safety_stock),
-            avg_daily_demand=dict(w.daily_demand),
-            recent_daily_demand=dict(w.daily_demand),
+    warehouses = []
+    for w in raw_state.warehouses:
+        predicted_stockout_days = {}
+        for sku, qty in w.inventory.items():
+            demand = w.daily_demand.get(sku, 0.1)
+            safety = w.safety_stock.get(sku, 0)
+            if demand > 0:
+                usable_stock = max(0, qty - safety)
+                predicted_stockout_days[sku] = int(usable_stock / demand)
+            else:
+                predicted_stockout_days[sku] = 999
+                
+        warehouses.append(
+            Warehouse(
+                id=w.id,
+                location=w.location,
+                inventory=dict(w.inventory),
+                safety_stock=dict(w.safety_stock),
+                avg_daily_demand=dict(w.daily_demand),
+                recent_daily_demand=dict(w.daily_demand),
+                predicted_stockout_days=predicted_stockout_days,
+            )
         )
-        for w in raw_state.warehouses
-    ]
 
     shipments = []
     for s in raw_state.shipments:
